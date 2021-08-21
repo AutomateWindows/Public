@@ -46,15 +46,23 @@ $domain = $domain.ToUpper()
 #letting the user know this next command could take a few minutes to finish
 Write-Host "`nQuerying the $domain domain for users matching input fields.  This may take a few minutes..." -ForegroundColor Green
 
+$start = Get-Date
+
 #two different types of AD queries based on whether a user name was entered
 $users = @()
 if ($userName.Length -gt 0) {
-    $users += Get-ADUser -Server $domain -Identity $userName –Properties "msDS-UserPasswordExpiryTimeComputed", *
+    $users += Get-ADUser -Server $domain -Identity $userName –Properties "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf | Select-Object "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf
 } else {
-    $users += Get-ADUser -Server $domain -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", *
+    $users += Get-ADUser -Server $domain -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf | Select-Object "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf
 }
 
-Write-Host "`n$(@($users).Count) users found in AD." -ForegroundColor Cyan
+$end = Get-Date
+$duration = [int]((New-TimeSpan -Start $start -End $end).TotalSeconds)
+
+Write-Host "`n$(@($users).Count) users found in AD ($duration seconds)." -ForegroundColor Cyan
+
+Write-Host "`nAppending to output variable..." -ForegroundColor Green
+$start = Get-Date
 
 #creating the output
 $output = @()
@@ -70,16 +78,26 @@ foreach ($user in $users) {
     @{n="MemberOf";e={@($user.MemberOf | Sort-Object | foreach {((($_ -split "CN=")[1]).Split(","))[0]}) -join ", "}}
 }
 
+$end = Get-Date
+$duration = [int]((New-TimeSpan -Start $start -End $end).TotalSeconds)
+Write-Host "`n$(@($output).Count) users appended to output variable ($duration seconds)." -ForegroundColor Cyan
+
 #if an OU name was entered and a user name was not, this will filter the output to only include users within that OU
 if (($ouName.Length -gt 0) -and ($userName.Length -eq 0)) {
+    $start = Get-Date
     $output = $output | Where-Object {$_.OU -match $ouName}
-    Write-Host "$(@($output).Count) users included after applying OU filter." -ForegroundColor Cyan
+    $end = Get-Date
+    $duration = [int]((New-TimeSpan -Start $start -End $end).TotalSeconds)
+    Write-Host "`n$(@($output).Count) users included after applying OU filter ($duration seconds)." -ForegroundColor Cyan
 }
 
 #if a group name was entered and a user name was not, this will filter the output to only include users that are a member of that group
 if (($groupName.Length -gt 0) -and ($userName.Length -eq 0)) {
+    $start = Get-Date
     $output = $output | Where-Object {$_.MemberOf -match $groupName}
-    Write-Host "$(@($output).Count) users included after applying group filter." -ForegroundColor Cyan
+    $end = Get-Date
+    $duration = [int]((New-TimeSpan -Start $start -End $end).TotalSeconds)
+    Write-Host "`n$(@($output).Count) users included after applying group filter ($duration seconds)." -ForegroundColor Cyan
 }
 
 #validating output contains some data
