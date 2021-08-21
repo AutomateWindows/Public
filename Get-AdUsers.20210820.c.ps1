@@ -1,33 +1,3 @@
-﻿<#
-.SYNOPSIS
-    Queries AD for list of users matching optional filters.
-
-.DESCRIPTION
-    Queries AD for list of users matching optional filters.  Report is saved as a 
-    CSV file in the same folder as the script.  The report will also be emailed if 
-    the user selects that option.
-
-.INPUTS
-    $domain
-    $ouName
-    $groupName
-    $userName
-    $email
-    $emailServer
-    $emailTo
-    $emailFrom
-
-.OUTPUTS
-    CSV file and email (optional)
-
-.NOTES
-    Name:    Get-AdUsers.ps1
-    Author:  https://www.fiverr.com/automatewindows
-    Created: 2021-08-20
-    Revised: 2021-08-20
-    Version: 1.2
-#>
-
 #clearing the output window
 Clear-Host
 
