@@ -44,14 +44,17 @@ if ($domain.Length -eq 0) {
 $domain = $domain.ToUpper()
 
 #letting the user know this next command could take a few minutes to finish
-Write-Host "Querying the $domain domain for users matching input fields.  This may take a few minutes..." -ForegroundColor Green
+Write-Host "`nQuerying the $domain domain for users matching input fields.  This may take a few minutes..." -ForegroundColor Green
 
 #two different types of AD queries based on whether a user name was entered
+$users = @()
 if ($userName.Length -gt 0) {
-    $users = Get-ADUser -Server $domain -Identity $userName –Properties "msDS-UserPasswordExpiryTimeComputed", *
+    $users += Get-ADUser -Server $domain -Identity $userName –Properties "msDS-UserPasswordExpiryTimeComputed", *
 } else {
-    $users = Get-ADUser -Server $domain -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", *
+    $users += Get-ADUser -Server $domain -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", *
 }
+
+Write-Host "`n$(@($users).Count) users found in AD." -ForegroundColor Cyan
 
 #creating the output
 $output = @()
@@ -70,11 +73,13 @@ foreach ($user in $users) {
 #if an OU name was entered and a user name was not, this will filter the output to only include users within that OU
 if (($ouName.Length -gt 0) -and ($userName.Length -eq 0)) {
     $output = $output | Where-Object {$_.OU -match $ouName}
+    Write-Host "$(@($output).Count) users included after applying OU filter." -ForegroundColor Cyan
 }
 
 #if a group name was entered and a user name was not, this will filter the output to only include users that are a member of that group
 if (($groupName.Length -gt 0) -and ($userName.Length -eq 0)) {
     $output = $output | Where-Object {$_.MemberOf -match $groupName}
+    Write-Host "$(@($output).Count) users included after applying group filter." -ForegroundColor Cyan
 }
 
 #validating output contains some data
@@ -82,23 +87,23 @@ if (($null -ne $output) -and (@($output).Count -gt 0)) {
     #sorting output so users with passwords expiring soon will be at the top
     $output = $output | Sort-Object PasswordExpiration
     $output | Export-Csv -Path $outputPath -NoTypeInformation -Force
-    Write-Host "CSV file saved: $outputPath" -ForegroundColor Green
+    Write-Host "`nCSV file saved: $outputPath" -ForegroundColor Green
     if ($email -eq "y") {
         #attempting to send email using the email settings provided by user
         $ErrorActionPreference = "Stop"
         try {
             Send-MailMessage -Attachments $outputPath -SmtpServer $emailServer -To @(($emailTo -replace " ", "") -split ",") -From $emailFrom -Subject "AD Users ($domain)" -Body "Report attached."
-            Write-Host "Report sent to $emailTo." -ForegroundColor Green
+            Write-Host "`nReport sent to $emailTo." -ForegroundColor Green
         } catch {
-            Write-Host "Report NOT sent to $emailTo.  Please check email settings." -ForegroundColor Yellow
+            Write-Host "`nReport NOT sent to $emailTo.  Please check email settings." -ForegroundColor Yellow
         }
     }
 } else {
-    Write-Host "No users found.  Please check input.  Terminating script..." -ForegroundColor Red
+    Write-Host "`nNo users found.  Please check input.  Terminating script..." -ForegroundColor Red
     Start-Sleep -Seconds 30
     exit
 }
 
-Write-Host "Script complete.  This window will close in 5 seconds..." -ForegroundColor Green
+Write-Host "`nScript complete.  This window will close in 5 seconds..." -ForegroundColor Green
 Start-Sleep -Seconds 5
 exit
