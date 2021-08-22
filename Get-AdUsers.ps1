@@ -25,9 +25,11 @@ $domain, $ouName, $groupName, $userName, $email, $emailServer, $emailTo, $emailF
 
 #getting user input
 $domain = Read-Host -Prompt "Enter target domain (or leave blank to query current domain)"
-$ouName = Read-Host -Prompt "Enter OU name  (or leave blank to include users in any OU)"
-$groupName = Read-Host -Prompt "Enter AD group name (or leave blank to include users in any group)"
-$userName = Read-Host -Prompt "Enter AD user name (or leave blank to include all users)"
+$userName = Read-Host -Prompt "Enter user name (or leave blank to include all users)"
+if ($userName.Length -eq 0) {
+    $ouName = Read-Host -Prompt "Enter OU name (MANDATORY)"
+    $groupName = Read-Host -Prompt "Enter group name (or leave blank to include users in any group)"
+}
 $email = Read-Host -Prompt "Would you like the CSV emailed (y/n)"
 if ($email -eq "y") {
     $emailServer = Read-Host -Prompt "Enter SMTP server IP"
@@ -43,8 +45,51 @@ if ($domain.Length -eq 0) {
 #uppercasing the domain so the case-sensitive Replace() method will work later
 $domain = $domain.ToUpper()
 
+#Getting list of matching OUs
+if (($ouName.Length -gt 0) -and ($userName.Length -eq 0)) {
+    Write-Host "`nQuerying the $domain domain for matching OUs..." -ForegroundColor Green
+    $ouNameFilter = "*$ouName*"
+    $ous = @()
+    $dns = $null
+    $dns = Get-ADOrganizationalUnit -Server $domain -Filter {Name -like $ouNameFilter} | Select-Object -ExpandProperty DistinguishedName
+    if ($dns) {
+        foreach ($dn in $dns) {
+            $a = $dn.Split(",")
+            $ous += "" | Select-Object @{n="Path";e={$a[$a.Length..0] -notlike "DC=*" -replace "^OU=" -join "  >>  "}}, @{n="DN";e={$dn}}
+        }
+        if (@($ous).Count -eq 1) {
+            $ou = $ous | Select-Object -ExpandProperty DN -First 1
+        } else {
+            Write-Host "`nMore than one OU matches that name.`n"
+            Write-Host "========================== Select the correct OU by entering the number next to it ===========================`n"
+            $i = 1
+            foreach ($ou in $ous) {
+                Write-Host $i -ForegroundColor Green -NoNewline;Write-Host " - $($ou.Path)" -ForegroundColor Cyan
+                $i++
+            }
+            Write-Host "`n==============================================================================================================`n"
+            $selection = Read-Host -Prompt "Selection"
+            if (@($ous.Count..1) -contains $selection) {
+                $ou = $ous[($selection - 1)] | Select-Object -ExpandProperty DN -First 1
+            } else {
+                Write-Host "Invalid OU selection.  Terminating script..." -ForegroundColor Red
+                Start-Sleep -Seconds 10
+                exit
+            }
+        }
+    } else {
+        Write-Host "No OUs match that name.  Terminating script..." -ForegroundColor Red
+        Start-Sleep -Seconds 5
+        exit
+    }
+} elseif (($ouName.Length -eq 0) -and ($userName.Length -eq 0)) {
+    Write-Host "No OU or user name was entered.  Terminating script..." -ForegroundColor Red
+    Start-Sleep -Seconds 5
+    exit
+}
+
 #letting the user know this next command could take a few minutes to finish
-Write-Host "`nQuerying the $domain domain for users matching input fields.  This may take a few minutes..." -ForegroundColor Green
+Write-Host "`nQuerying the $domain domain for users matching input fields.  This may take a moment..." -ForegroundColor Green
 
 $start = Get-Date
 
@@ -53,7 +98,7 @@ $users = @()
 if ($userName.Length -gt 0) {
     $users += Get-ADUser -Server $domain -Identity $userName –Properties "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf | Select-Object "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf
 } else {
-    $users += Get-ADUser -Server $domain -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf | Select-Object "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf
+    $users += Get-ADUser -Server $domain -SearchBase $ou -Filter {(Enabled -eq $true) -and (PasswordNeverExpires -eq $false)} –Properties "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf | Select-Object "msDS-UserPasswordExpiryTimeComputed", DisplayName, SamAccountName, Created, PasswordLastSet, LastLogonDate, CanonicalName, CN, MemberOf
 }
 
 $end = Get-Date
